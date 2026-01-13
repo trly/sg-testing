@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Intentionally vulnerable app for security scanner testing - DO NOT DEPLOY",
   "private": true,
+  "packageManager": "yarn@4.1.1",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
