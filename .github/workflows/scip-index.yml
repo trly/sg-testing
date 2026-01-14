@@ -29,4 +29,4 @@ jobs:
         run: scip-typescript index --infer-tsconfig
 
       - name: Upload SCIP index to Sourcegraph
-        run: src lsif upload -github-token='${{ secrets.GITHUB_TOKEN }}' -no-progress
+        run: src code-intel upload -github-token='${{ secrets.GITHUB_TOKEN }}' -no-progress
