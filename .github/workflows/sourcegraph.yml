@@ -1,0 +1,36 @@
+name: SCIP Index
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-index:
+    runs-on: ubuntu-latest
+    container: sourcegraph/scip-java:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SCIP index
+        run: scip-java index
+        env:
+          JVM_VERSION: 21
+
+  upload-index:
+    runs-on: ubuntu-latest
+    needs: generate-index
+    container: sourcegraph/src-cli:latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download index artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: scip-index
+
+      - name: Upload SCIP index to Sourcegraph
+        run: src code-intel upload -github-token='${{ secrets.GITHUB_TOKEN }}' -no-progress
+        env:
+          SRC_ACCESS_TOKEN: ${{ secrets.SRC_ACCESS_TOKEN }}
+          SRC_ENDPOINT: ${{ secrets.SRC_ENDPOINT }}
