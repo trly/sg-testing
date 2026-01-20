@@ -14,7 +14,7 @@ jobs:
         uses: actions/setup-java@v5
         # adjust as needed for your project
         with:
-          java-version: "17"
+          java-version: "21"
           distribution: "temurin"
 
       - name: Set up Coursier
