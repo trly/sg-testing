@@ -43,7 +43,13 @@ jobs:
           name: scip-index
 
       - name: Upload to Sourcegraph
-        run: src code-intel upload -github-token ${{ secrets.GITHUB_TOKEN  }}
+        run: |
+          src code-intel upload \
+            -file=index.scip \
+            -repo=github.com/${{ github.repository }} \
+            -commit=${{ github.sha }} \
+            -root=/ \
+            -github-token=${{ secrets.GITHUB_TOKEN }}
         env:
           SRC_ENDPOINT: ${{ secrets.SRC_ENDPOINT }}
           SRC_ACCESS_TOKEN: ${{ secrets.SRC_ACCESS_TOKEN }}
