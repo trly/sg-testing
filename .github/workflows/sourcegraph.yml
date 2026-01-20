@@ -21,7 +21,8 @@ jobs:
         uses: coursier/setup-action@v1
 
       - name: Generate SCIP index
-        run: cs launch com.sourcegraph:scip-java_2.13:0.11.2 -- index --build-tool=gradle -- --no-configuration-cache
+        run: |
+          cs launch com.sourcegraph:scip-java_2.13:0.11.2 -- index --build-tool=gradle -- --no-configuration-cache compileKotlin compileTestKotlin
 
       - name: Upload index artifact
         uses: actions/upload-artifact@v6
