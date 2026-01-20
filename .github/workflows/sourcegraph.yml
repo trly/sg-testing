@@ -24,7 +24,7 @@ jobs:
         run: cs launch com.sourcegraph:scip-java_2.13:0.11.2 -- index
 
       - name: Upload index artifact
-        uses: actions/upload-artifact@6
+        uses: actions/upload-artifact@v6
         with:
           name: scip-index
           path: index.scip
