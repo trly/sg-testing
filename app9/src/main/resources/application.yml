@@ -1,0 +1,9 @@
+server:
+  port: 8088
+
+management.health.kafka.enabled: true
+management.health.defaults.enabled: true
+management:
+  endpoint:
+    health:
+      show-details: ALWAYS

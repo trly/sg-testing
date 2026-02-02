@@ -1,0 +1,9 @@
+server:
+  port: 8086
+
+management.health.solr.enabled: true
+management.endpoint.health.show-details: ALWAYS
+management:
+  health:
+    influxdb:
+      enabled: true

@@ -2,7 +2,16 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html#sec::toml-dependencies-format
 
 [versions]
-kotlin-gradle-plugin = "2.2.21"
+guava = "33.4.6-jre"
+junit-jupiter = "5.12.1"
+spring-boot = "3.4.2"
 
 [libraries]
-kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin-gradle-plugin" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "spring-boot" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator", version.ref = "spring-boot" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
