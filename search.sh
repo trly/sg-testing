@@ -1,14 +1,21 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
 # Search for a dotted property key:value across repos
 # Usage: ./search.sh "management.endpoint.health.enabled:true" [file_filter]
 # RE2 finds candidates via parent path patterns, yq validates exact path+value
 
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "Error at %s:%s\n" "${BASH_SOURCE[0]}" "${LINENO}" >&2' ERR
+
+# Check dependencies
+for cmd in src jq yq sed grep sort tr; do
+  command -v "$cmd" >/dev/null 2>&1 || { printf 'Missing dependency: %s\n' "$cmd" >&2; exit 127; }
+done
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <key:value> [file_filter]" >&2
-  echo "Example: $0 'management.endpoint.health.show-details:ALWAYS'" >&2
-  echo "Example: $0 'management.endpoint.health.show-details:ALWAYS' '/resources/application([-_][a-zA-Z0-9]+)*\\.(properties|yml|yaml)\$'" >&2
+  printf 'Usage: %s <key:value> [file_filter]\n' "$0" >&2
+  printf 'Example: %s "management.endpoint.health.show-details:ALWAYS"\n' "$0" >&2
+  printf 'Example: %s "management.endpoint.health.show-details:ALWAYS" "/resources/application([-_][a-zA-Z0-9]+)*\\.(properties|yml|yaml)$"\n' "$0" >&2
   exit 1
 fi
 
@@ -18,138 +25,146 @@ file_filter="${2:-}"
 key="${input%%:*}"
 value="${input#*:}"
 
-# Validate input
 if [[ -z "$key" || -z "$value" ]]; then
-  echo "Error: must be key:value with non-empty key and value" >&2
+  printf 'Error: must be key:value with non-empty key and value\n' >&2
   exit 1
 fi
 
 # Split key into segments
 IFS='.' read -ra segments <<< "$key"
-num_segments=${#segments[@]}
 
-if [[ $num_segments -lt 2 ]]; then
-  echo "Error: key must have at least two segments (parent.key)" >&2
+if [[ ${#segments[@]} -lt 2 ]]; then
+  printf 'Error: key must have at least two segments (parent.key)\n' >&2
   exit 1
 fi
 
-# Validate no empty segments
 for seg in "${segments[@]}"; do
   if [[ -z "$seg" ]]; then
-    echo "Error: key contains empty segment (e.g., '..')" >&2
+    printf 'Error: key contains empty segment\n' >&2
     exit 1
   fi
 done
 
-# Escape for RE2: metacharacters and forward slash
+# Escape for RE2 regex
 escape_re2() {
-  printf '%s' "$1" | sed -e 's/[\/\\.^$|()[\]{}*+?-]/\\&/g'
+  printf '%s' "$1" | sed 's/[\/\\.^$|()[\]{}*+?-]/\\&/g'
 }
 
-# Build parent path (all segments except last)
+# Escape for ERE (grep -E)
+escape_ere() {
+  printf '%s' "$1" | sed 's/[][(){}.^$*+?|\\/]/\\&/g'
+}
+
+# Build RE2 pattern: find final key:value pair, let yq validate full path
+num_segments=${#segments[@]}
 last_index=$((num_segments - 1))
-parent_segments=("${segments[@]:0:$last_index}")
-parent_flat=$(IFS='.'; echo "${parent_segments[*]}")
-
-# Build RE2 alternations for ALL nesting permutations
-# For n segments, there are 2^(n-1) ways to combine dots/colons
-# Each bit in 0..(2^(n-1)-1) represents: 0=dot, 1=colon at that position
-
-full_key_escaped=$(escape_re2 "$key")
 last_seg_escaped=$(escape_re2 "${segments[$last_index]}")
 value_escaped=$(escape_re2 "$value")
 
-# Generate all 2^(n-1) permutations for the full key
-permutations=()
+# Match: key[.:=]value (handles YAML colon, properties equals, or dotted flat key)
+re2_pattern="${last_seg_escaped}[.:=]\\s*${value_escaped}"
+
+# Build all 2^(n-1) yq path permutations to handle mixed nesting
+# Each bit represents: 0=continue flat segment, 1=start new nested level
 num_splits=$((num_segments - 1))
-max_combo=$((1 << num_splits))  # 2^(n-1)
+max_combo=$((1 << num_splits))
+yq_paths=()
 
 for ((combo = 0; combo < max_combo; combo++)); do
-  pattern=""
+  path='.'
+  flat_part=""
   for ((i = 0; i < num_segments; i++)); do
-    seg_escaped=$(escape_re2 "${segments[$i]}")
-    pattern+="${seg_escaped}"
-    if ((i < last_index)); then
-      # Check bit i: 0=dot, 1=colon
+    seg=${segments[$i]}
+    esc_seg=${seg//\\/\\\\}
+    esc_seg=${esc_seg//\"/\\\"}
+    
+    if [[ -z "$flat_part" ]]; then
+      flat_part="$esc_seg"
+    else
+      flat_part+=".$esc_seg"
+    fi
+    
+    # At each split point (except last), check if we should nest
+    if ((i < num_splits)); then
       if (((combo >> i) & 1)); then
-        pattern+=":\\s*"
-      else
-        pattern+="\\."
+        # Bit is 1: emit current flat part and start new level
+        path+="[\"$flat_part\"]"
+        flat_part=""
       fi
     fi
   done
-  permutations+=("$pattern")
-done
-
-# Combine all permutations
-all_patterns=""
-for ((i = 0; i < ${#permutations[@]}; i++)); do
-  if [[ $i -gt 0 ]]; then
-    all_patterns+="|"
+  # Emit remaining flat part
+  if [[ -n "$flat_part" ]]; then
+    path+="[\"$flat_part\"]"
   fi
-  all_patterns+="${permutations[$i]}"
+  yq_paths+=("$path")
 done
 
-re2_pattern="(${all_patterns})"
-
-# Build file filter if provided (file: matches against full file path)
+# Build file filter clause
 file_clause=""
 if [[ -n "$file_filter" ]]; then
   file_clause="file:${file_filter}"
 fi
 
-# Full query
 re2_query="context:global /${re2_pattern}/ ${file_clause}"
 
-# yq path for validation
-yq_path=".${key}"
+printf 'RE2: /%s/\n' "$re2_pattern" >&2
+printf 'yq paths: %s\n' "${yq_paths[*]}" >&2
+printf 'Expected value: %s\n' "$value" >&2
+printf 'Query: %s\n' "$re2_query" >&2
+printf '%s\n' "---" >&2
 
-echo "RE2:  /${re2_pattern}/" >&2
-echo "yq path: ${yq_path}" >&2
-echo "Expected value: ${value}" >&2
-echo "Query: ${re2_query}" >&2
-echo "---" >&2
+# Pre-escape for properties matching
+key_ere=$(escape_ere "$key")
+val_ere=$(escape_ere "$value")
 
-# Use SRC_ACCESS_TOKEN from environment (set by envchain) or fall back to src cli config
-# Use process substitution to avoid subshell exit issues with set -e
 while IFS='|' read -r repo path; do
-  # Fetch file content via GraphQL
   gql_query='query($repo: String!, $path: String!) { repository(name: $repo) { commit(rev: "HEAD") { file(path: $path) { content } } } }'
   gql_vars="{\"repo\": \"$repo\", \"path\": \"$path\"}"
-  
-  response=$(src api -query="$gql_query" -vars="$gql_vars" 2>&1) || true
-  raw_content=$(echo "$response" | jq -r '.data.repository.commit.file.content // empty' 2>/dev/null) || true
-  
-  # Strip markdown code fences if present (GraphQL sometimes wraps content)
-  content=$(echo "$raw_content" | sed '1{/^```/d;}' | sed '${/^```$/d;}')
-  
+
+  if ! response=$(src api -query="$gql_query" -vars="$gql_vars" 2>/dev/null); then
+    printf 'WARN: src api failed for %s:%s\n' "$repo" "$path" >&2
+    continue
+  fi
+
+  raw_content=$(jq -r '.data.repository.commit.file.content // empty' <<< "$response") || {
+    printf 'WARN: jq parse failed for %s:%s\n' "$repo" "$path" >&2
+    continue
+  }
+
+  # Strip markdown code fences if present
+  content=$(printf '%s' "$raw_content" | sed '1{/^```/d;}' | sed '${/^```$/d;}')
+
   [[ -z "$content" ]] && continue
 
-  # Handle .properties files with grep
+  # Handle .properties files (skip YAML processing entirely)
   if [[ "$path" == *.properties ]]; then
-    if echo "$content" | grep -qiE "^${key}[[:space:]]*=[[:space:]]*${value}[[:space:]]*$"; then
-      echo "=== $repo:$path ==="
-      echo "${SRC_ENDPOINT:-https://sourcegraph.com}/${repo}/-/blob/${path}"
-      echo "$content" | grep -iE "^${key}[[:space:]]*=" | head -5
-      echo ""
+    if printf '%s\n' "$content" | grep -qiE "^[[:space:]]*${key_ere}[[:space:]]*=[[:space:]]*${val_ere}[[:space:]]*\$"; then
+      printf '=== %s:%s ===\n' "$repo" "$path"
+      printf '%s/%s/-/blob/%s\n' "${SRC_ENDPOINT:-https://sourcegraph.com}" "$repo" "$path"
+      printf '%s\n' "$content" | grep -iE "^[[:space:]]*${key_ere}[[:space:]]*=" | head -5
+      printf '\n'
     fi
     continue
   fi
 
-  # For YAML: try nested path first, then flat dotted key
-  actual=$(printf '%s' "$content" | yq eval "$yq_path // \"__NULL__\"" - 2>/dev/null) || true
-  if [[ "$actual" == "__NULL__" ]]; then
-    actual=$(printf '%s' "$content" | yq eval ".[\"$key\"] // \"__NULL__\"" - 2>/dev/null) || true
-  fi
+  # For YAML: try all yq path permutations until one matches
+  actual="__NULL__"
+  for yq_path in "${yq_paths[@]}"; do
+    result=$(trap - ERR; printf '%s' "$content" | yq eval "$yq_path // \"__NULL__\"" - 2>/dev/null) || true
+    if [[ "$result" != "__NULL__" && -n "$result" ]]; then
+      actual="$result"
+      break
+    fi
+  done
 
-  # Case-insensitive comparison (portable for bash 3.2)
+  # Case-insensitive comparison
   actual_lower=$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')
   value_lower=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')
   if [[ "$actual_lower" == "$value_lower" ]]; then
-    echo "=== $repo:$path ==="
-    echo "${SRC_ENDPOINT:-https://sourcegraph.com}/${repo}/-/blob/${path}"
-    echo "${key}: ${actual}"
-    echo ""
+    printf '=== %s:%s ===\n' "$repo" "$path"
+    printf '%s/%s/-/blob/%s\n' "${SRC_ENDPOINT:-https://sourcegraph.com}" "$repo" "$path"
+    printf '%s: %s\n\n' "$key" "$actual"
   fi
 done < <(src search --json --stream -- "$re2_query" \
   | jq -r 'select(.type == "content") | "\(.repository)|\(.path)"' \
