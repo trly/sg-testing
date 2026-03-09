@@ -1,4 +1,4 @@
-package com.example.sgtesting;
+package com.github.trly.sg;
 
 import java.lang.reflect.Field;
 

@@ -3,6 +3,9 @@ plugins {
     application
 }
 
+group = "com.github.trly.sg"
+version = "0.1.0"
+
 repositories {
     mavenCentral()
 }
@@ -18,5 +21,5 @@ java {
 }
 
 application {
-    mainClass = "com.example.sgtesting.App"
+    mainClass = "com.github.trly.sg.App"
 }
