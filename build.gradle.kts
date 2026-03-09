@@ -1,6 +1,7 @@
 plugins {
     java
     application
+    `maven-publish`
 }
 
 group = "com.github.trly.sg"
@@ -22,4 +23,12 @@ java {
 
 application {
     mainClass = "com.github.trly.sg.App"
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
 }
