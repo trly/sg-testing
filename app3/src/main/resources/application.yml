@@ -1,9 +1,0 @@
-server:
-  port: 8082
-
-management.health.readinessstate.enabled: true
-management.health.mail.enabled: true
-management:
-  endpoint:
-    health:
-      show-details: ALWAYS

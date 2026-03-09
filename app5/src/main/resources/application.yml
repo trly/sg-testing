@@ -1,7 +1,0 @@
-server:
-  port: 8084
-
-management.health.elasticsearch.enabled: true
-management.health.jms.enabled: true
-management.health.rabbit.enabled: true
-management.endpoint.health.show-details: ALWAYS
