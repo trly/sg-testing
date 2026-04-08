@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: fixture-yaml-nested
+  h2:
+    console:
+      enabled: true
+      path: /h2-console

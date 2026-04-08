@@ -1,0 +1,5 @@
+spring:
+  h2:
+    path: /h2-console
+console:
+  enabled: true
